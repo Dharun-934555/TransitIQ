@@ -1,0 +1,4 @@
+vehicle_id,route_id,transport_mode,status,lat,lon,speed
+V1,Red,Subway,IN_TRANSIT_TO,42.3,-71.0,20
+V2,Bus-1,Bus,STOPPED_AT,42.35,-71.05,0
+V3,Blue,Subway,IN_TRANSIT_TO,42.36,-71.01,30
