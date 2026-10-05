@@ -65,36 +65,200 @@ if st.sidebar.button("🔄 Refresh Live Data"):
     load_data(force_refresh=True)
 
 if page == "🏠 Dashboard":
-    st.header("🏠 Dashboard")
-    st.write(f"Current Data Status: **{st.session_state.data_status}** (Last Updated: {st.session_state.last_updated})")
-    
-    if st.session_state.data_status == "🟡 CACHED DATA":
-        st.warning(f"⚠️ Live API is currently unavailable. Showing cached data from {st.session_state.last_updated}.")
-    elif st.session_state.data_status == "🔴 API OFFLINE":
-        st.error("Unable to retrieve live transport data. Please try again later.")
+    # 2. Top Header
+    header_cols = st.columns([3, 1])
+    with header_cols[0]:
+        st.markdown("<h1 style='margin-bottom:0; padding-bottom:0;'>TransitIQ</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='color:gray; font-size:18px; margin-top:0;'>Real-Time Public Transport Intelligence</p>", unsafe_allow_html=True)
+    with header_cols[1]:
+        st.markdown("<div style='text-align:right; margin-top:20px; font-size:20px;'>🔔 👤 <b>Admin User</b></div>", unsafe_allow_html=True)
         
+    st.markdown("---")
+    
+    # 3. Welcome Section
+    welcome_cols = st.columns([3, 1])
+    with welcome_cols[0]:
+        st.markdown("### Welcome back, Admin 👋")
+        st.markdown("**Monitor transport activity, understand travel behavior, and discover intelligent mobility insights.**")
+    with welcome_cols[1]:
+        status_color = "#28a745" if "LIVE" in st.session_state.data_status else "#fd7e14" if "CACHED" in st.session_state.data_status else "#007bff" if "DEMO" in st.session_state.data_status else "#dc3545"
+        st.markdown(f"<div style='text-align:right; padding: 15px; border-radius: 10px; background-color: {status_color}; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'><b>{st.session_state.data_status}</b><br><small>Last updated: {st.session_state.last_updated}</small></div>", unsafe_allow_html=True)
+        
+    st.write("")
+    
     df = st.session_state.transport_data
     b_df = st.session_state.behavior_data
+    c_df = st.session_state.clustered_data
     
-    if df is not None and not df.empty:
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Active Vehicles", len(df))
-        col2.metric("Active Routes", df['route_id'].nunique() if 'route_id' in df.columns else 0)
-        col3.metric("Transport Modes", df['transport_mode'].nunique() if 'transport_mode' in df.columns else 0)
-        col4.metric("Avg Trip Distance", f"{b_df['avg_travel_distance_km'].mean():.1f} km" if b_df is not None else "N/A")
+    # 4. KPI CARDS
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    
+    trips_val = len(df) if df is not None else 0
+    routes_val = df['route_id'].nunique() if df is not None and 'route_id' in df.columns else 0
+    stops_val = len(df) if df is not None else 0 
+    time_val = f"{b_df['avg_travel_duration_min'].mean():.1f}m" if b_df is not None else "0m"
+    groups_val = len(st.session_state.cluster_names) if st.session_state.cluster_names else 0
+    
+    kpi1.metric("🚌 Total Trips", trips_val)
+    kpi2.metric("🛣️ Active Routes", routes_val)
+    kpi3.metric("📍 Active Stops", stops_val)
+    kpi4.metric("⏱️ Avg Travel Time", time_val)
+    kpi5.metric("👥 Behavior Groups", groups_val)
+    
+    st.write("")
+    
+    # 5. MAIN ANALYTICS SECTION
+    col_main1, col_main2 = st.columns([2, 1])
+    with col_main1:
+        st.markdown("### 📈 Transport Activity")
+        if df is not None and not df.empty:
+            if 'status' in df.columns:
+                status_counts = df['status'].value_counts().reset_index()
+                status_counts.columns = ['Status', 'Count']
+                fig_act = px.area(status_counts, x='Status', y='Count', color='Status', markers=True)
+                fig_act.update_layout(margin=dict(l=0, r=0, t=30, b=0), plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_act, use_container_width=True)
+            else:
+                st.info("No activity data available.")
+        else:
+            st.info("No data available.")
+            
+    with col_main2:
+        st.markdown("### 🍩 Transport Mode")
+        if df is not None and not df.empty and 'transport_mode' in df.columns:
+            fig_mode = px.pie(df, names='transport_mode', hole=0.6, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_mode.update_traces(textposition='inside', textinfo='percent+label', hoverinfo='label+value+percent')
+            fig_mode.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig_mode, use_container_width=True)
+        else:
+            st.info("No mode data available.")
+            
+    st.write("")
+    
+    # 6. SECOND ANALYTICS ROW
+    col_sec1, col_sec2 = st.columns(2)
+    with col_sec1:
+        st.markdown("### 📊 Route Activity")
+        if df is not None and not df.empty and 'name' in df.columns:
+            route_counts = df['name'].value_counts().reset_index().head(6)
+            route_counts.columns = ['Route Name', 'Activity']
+            fig_route = px.bar(route_counts, y='Route Name', x='Activity', orientation='h', color='Activity', color_continuous_scale='Purples')
+            fig_route.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=0, r=0, t=0, b=0), plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_route, use_container_width=True)
+        else:
+            st.info("No route data available.")
+            
+    with col_sec2:
+        st.markdown("### 📊 Peak Hour Analysis")
+        if b_df is not None:
+            peak_bins = pd.cut(b_df['peak_hour_usage_pct'], bins=[-0.1, 0.4, 0.7, 1.1], labels=['Off-Peak', 'Mixed', 'Peak-Hour'])
+            peak_counts = peak_bins.value_counts().reset_index()
+            peak_counts.columns = ['Period', 'Users']
+            fig_peak = px.bar(peak_counts, x='Period', y='Users', color='Period', color_discrete_map={'Off-Peak': '#AEC7E8', 'Mixed': '#FFBB78', 'Peak-Hour': '#FF7F0E'})
+            fig_peak.update_layout(margin=dict(l=0, r=0, t=0, b=0), plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_peak, use_container_width=True)
+        else:
+            st.info("No behavior data available.")
+            
+    st.write("---")
+    
+    # 7. PASSENGER BEHAVIOR OVERVIEW
+    st.markdown("## 👥 Passenger Behavior Insights")
+    if c_df is not None and st.session_state.cluster_names:
+        cluster_cols = st.columns(len(st.session_state.cluster_names))
+        total_pax = len(c_df)
         
-        st.subheader("Transport Mode Distribution")
-        if 'transport_mode' in df.columns:
-            fig = px.pie(df, names='transport_mode', hole=0.4)
-            st.plotly_chart(fig, use_container_width=True)
+        for i, (c_idx, name) in enumerate(st.session_state.cluster_names.items()):
+            count = len(c_df[c_df['cluster'] == c_idx])
+            pct = (count / total_pax) * 100
             
-        st.subheader("Route Activity")
-        if 'name' in df.columns:
-            route_counts = df['name'].value_counts().reset_index()
-            route_counts.columns = ['Route Name', 'Count']
-            fig2 = px.bar(route_counts.head(10), x='Route Name', y='Count')
-            st.plotly_chart(fig2, use_container_width=True)
+            border_colors = ['#636efa', '#EF553B', '#00cc96', '#ab63fa', '#FFA15A', '#19d3f3']
+            b_color = border_colors[i % len(border_colors)]
             
+            with cluster_cols[i]:
+                st.markdown(f"""
+                <div style='padding: 15px; border-radius: 10px; background-color: var(--background-color); border-left: 5px solid {b_color}; box-shadow: 0 2px 10px rgba(0,0,0,0.1); height: 100%;'>
+                    <h4 style='margin-top:0;'>{name}</h4>
+                    <h2 style='color:{b_color}; margin:0;'>{pct:.0f}%</h2>
+                    <p style='color:gray; font-size:14px; margin-bottom:0;'>{count} travelers</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+        # 8. BEHAVIOR DISTRIBUTION
+        st.write("")
+        st.markdown("### Travel Behavior Distribution")
+        dist = c_df['behavior_group'].value_counts().reset_index()
+        dist.columns = ['Behavior Group', 'Count']
+        fig_dist = px.bar(dist, x='Behavior Group', y='Count', color='Behavior Group', text='Count')
+        fig_dist.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_dist, use_container_width=True)
+    else:
+        st.info("**Run ML Segmentation** from the sidebar to discover travel behavior groups.")
+        
+    st.write("---")
+    
+    # 9 & 10. SMART INSIGHTS & LIVE STATUS
+    bot_col1, bot_col2 = st.columns([2, 1])
+    with bot_col1:
+        st.markdown("## 💡 Smart Mobility Insights")
+        if b_df is not None and not b_df.empty:
+            top_mode = b_df['preferred_mode'].mode()[0]
+            avg_peak = b_df['peak_hour_usage_pct'].mean()
+            peak_str = "higher" if avg_peak > 0.5 else "moderate"
+            st.markdown(f"""
+            <div style='padding: 20px; border-radius: 10px; background: linear-gradient(135deg, rgba(99, 110, 250, 0.1) 0%, rgba(171, 99, 250, 0.1) 100%); border: 1px solid rgba(99, 110, 250, 0.2);'>
+                <ul style='font-size: 16px; line-height: 1.8; margin-bottom:0;'>
+                    <li><b>{top_mode}</b> routes account for the highest transport preference among tracked travelers.</li>
+                    <li>Overall peak-hour usage is <b>{peak_str}</b> across the network ({avg_peak*100:.1f}% average).</li>
+                    <li>The average traveler takes <b>{b_df['trips_per_week'].mean():.1f}</b> trips per week covering <b>{b_df['avg_travel_distance_km'].mean():.1f}</b> km.</li>
+                    <li>Long-distance travel patterns are concentrated based on route availability.</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("Not enough data to generate insights.")
+            
+    with bot_col2:
+        st.markdown("### 🟢 Live Transport Status")
+        status_bg = "#d4edda" if "LIVE" in st.session_state.data_status else "#fff3cd" if "CACHED" in st.session_state.data_status else "#cce5ff" if "DEMO" in st.session_state.data_status else "#f8d7da"
+        status_color = "#155724" if "LIVE" in st.session_state.data_status else "#856404" if "CACHED" in st.session_state.data_status else "#004085" if "DEMO" in st.session_state.data_status else "#721c24"
+        
+        st.markdown(f"""
+        <div style='padding: 20px; border-radius: 10px; background-color: {status_bg}; color: {status_color}; border: 1px solid {status_color};'>
+            <h4 style='margin-top:0;'>{st.session_state.data_status}</h4>
+            <b>Data Source:</b> MBTA V3 API<br>
+            <b>Records:</b> {trips_val}<br>
+            <br>
+            <small>Last updated: {st.session_state.last_updated}</small>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🔄 Refresh Data", key="refresh_dash"):
+            load_data(force_refresh=True)
+            st.rerun()
+            
+    st.write("---")
+    
+    # 11. QUICK ACTIONS
+    st.markdown("## ⚡ Quick Actions")
+    qa_cols = st.columns(5)
+    qa_actions = [
+        ("📡 Live Transport", "View Live Data"),
+        ("🤖 Run ML Analysis", "Train Model"),
+        ("📊 View Analytics", "Show Charts"),
+        ("👥 Behavior Insights", "Cluster Info"),
+        ("🧪 Analyze Profile", "New Passenger")
+    ]
+    
+    for i, (label, desc) in enumerate(qa_actions):
+        with qa_cols[i]:
+            st.markdown(f"""
+            <div style='text-align:center; padding:15px; background-color:rgba(128,128,128,0.05); border-radius:10px; border:1px solid rgba(128,128,128,0.2);'>
+                <b>{label}</b><br>
+                <small style='color:gray;'>{desc}</small>
+            </div>
+            """, unsafe_allow_html=True)
+            
+
 elif page == "📡 Live Transport Data":
     st.header("📡 Live Transport Data")
     st.write("### Connection Status")
