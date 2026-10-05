@@ -7,6 +7,39 @@ from ml_model import train_kmeans, calculate_elbow, predict_new_passenger
 
 set_page_config()
 
+# Authentication State
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1.2, 1])
+    
+    with col2:
+        st.markdown("""
+        <div style='text-align: center; margin-bottom: 2rem;'>
+            <h1 style='color: #636efa; margin-bottom: 0;'>TransitIQ</h1>
+            <p style='color: gray; font-size: 18px; margin-top: 5px;'>Real-Time Public Transport Intelligence</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            st.markdown("### 🔒 Secure Login")
+            username = st.text_input("Username", placeholder="Enter 'admin'")
+            password = st.text_input("Password", type="password", placeholder="Enter 'admin'")
+            submit = st.form_submit_button("Sign In", use_container_width=True)
+            
+            if submit:
+                if username.strip().lower() == "admin" and password == "admin":
+                    st.session_state.authenticated = True
+                    st.session_state.username = "Admin User"
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials. Hint: use 'admin' and 'admin'")
+                    
+    render_footer()
+    st.stop()
+
 # Sidebar Navigation
 st.sidebar.title("TransitIQ Navigation")
 page = st.sidebar.radio("Go to", [
@@ -63,6 +96,11 @@ st.sidebar.write(f"**Status:** {st.session_state.data_status}")
 st.sidebar.write(f"**Updated:** {st.session_state.last_updated}")
 if st.sidebar.button("🔄 Refresh Live Data"):
     load_data(force_refresh=True)
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🚪 Logout"):
+    st.session_state.authenticated = False
+    st.rerun()
 
 if page == "🏠 Dashboard":
     # 2. Top Header
